@@ -210,25 +210,49 @@ app.post('/api/products', authenticateToken, async (req, res) => {
 app.put('/api/products/:id/sell', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { sellingPrice } = req.body;
+    const { sellingPrice, quantityToSell } = req.body;
 
-    // Check if the product belongs to the user
-    const productExists = await prisma.product.findFirst({
+    const product = await prisma.product.findFirst({
       where: { id: Number(id), userId: req.user.userId }
     });
 
-    if (!productExists) {
+    if (!product) {
       return res.status(404).json({ error: "Produit non trouvé ou non autorisé." });
     }
 
-    const product = await prisma.product.update({
-      where: { id: Number(id) },
-      data: {
-        status: 'SOLD',
-        sellingPrice: Number(sellingPrice)
-      }
-    });
-    res.json(product);
+    const sellQty = Number(quantityToSell);
+    
+    if (sellQty >= product.quantity || isNaN(sellQty)) {
+      // Vendre tout
+      const updatedProduct = await prisma.product.update({
+        where: { id: Number(id) },
+        data: {
+          status: 'SOLD',
+          sellingPrice: Number(sellingPrice)
+        }
+      });
+      res.json(updatedProduct);
+    } else {
+      // Vente partielle (diviser)
+      await prisma.product.update({
+        where: { id: Number(id) },
+        data: {
+          quantity: product.quantity - sellQty
+        }
+      });
+
+      const soldProduct = await prisma.product.create({
+        data: {
+          name: product.name,
+          quantity: sellQty,
+          purchasePrice: product.purchasePrice,
+          sellingPrice: Number(sellingPrice),
+          status: 'SOLD',
+          userId: req.user.userId
+        }
+      });
+      res.json(soldProduct);
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -241,8 +265,25 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
       where: { userId: req.user.userId, status: 'AVAILABLE' }
     });
 
+    const { month, year } = req.query;
+    let soldWhereClause = { userId: req.user.userId, status: 'SOLD' };
+
+    if (month && year) {
+      const monthInt = parseInt(month, 10);
+      const yearInt = parseInt(year, 10);
+      
+      if (!isNaN(monthInt) && !isNaN(yearInt)) {
+        const startDate = new Date(yearInt, monthInt - 1, 1);
+        const endDate = new Date(yearInt, monthInt, 1);
+        soldWhereClause.updatedAt = {
+          gte: startDate,
+          lt: endDate
+        };
+      }
+    }
+
     const soldProducts = await prisma.product.findMany({
-      where: { userId: req.user.userId, status: 'SOLD' }
+      where: soldWhereClause
     });
 
     let totalCapital = 0;
