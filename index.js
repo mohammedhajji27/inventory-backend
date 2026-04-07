@@ -9,6 +9,10 @@ dotenv.config();
 
 const app = express();
 const prisma = new PrismaClient();
+// Health check pour Render
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 app.use(cors({
   origin: [
@@ -18,6 +22,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
 
@@ -39,7 +48,7 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     // Check if user exists
     const existingUser = await prisma.user.findUnique({ where: { username } });
     if (existingUser) {
@@ -64,7 +73,7 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user) {
       return res.status(400).json({ error: "Identifiants incorrects." });
@@ -85,7 +94,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.put('/api/auth/profile', authenticateToken, async (req, res) => {
   try {
     const { newUsername, currentPassword, newPassword } = req.body;
-    
+
     const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
@@ -134,9 +143,9 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
 app.get('/api/products', authenticateToken, async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      where: { 
+      where: {
         userId: req.user.userId,
-        status: 'AVAILABLE' 
+        status: 'AVAILABLE'
       }
     });
     res.json(products);
@@ -149,9 +158,9 @@ app.get('/api/products', authenticateToken, async (req, res) => {
 app.get('/api/products/sold', authenticateToken, async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      where: { 
+      where: {
         userId: req.user.userId,
-        status: 'SOLD' 
+        status: 'SOLD'
       }
     });
     res.json(products);
@@ -184,19 +193,19 @@ app.put('/api/products/:id/sell', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { sellingPrice } = req.body;
-    
+
     // Check if the product belongs to the user
     const productExists = await prisma.product.findFirst({
       where: { id: Number(id), userId: req.user.userId }
     });
-    
+
     if (!productExists) {
       return res.status(404).json({ error: "Produit non trouvé ou non autorisé." });
     }
 
     const product = await prisma.product.update({
       where: { id: Number(id) },
-      data: { 
+      data: {
         status: 'SOLD',
         sellingPrice: Number(sellingPrice)
       }
@@ -213,14 +222,14 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
     const availableProducts = await prisma.product.findMany({
       where: { userId: req.user.userId, status: 'AVAILABLE' }
     });
-    
+
     const soldProducts = await prisma.product.findMany({
       where: { userId: req.user.userId, status: 'SOLD' }
     });
 
     let totalCapital = 0;
     let expectedRevenue = 0;
-    
+
     availableProducts.forEach(p => {
       totalCapital += (p.purchasePrice * p.quantity);
       expectedRevenue += (p.sellingPrice * p.quantity);
