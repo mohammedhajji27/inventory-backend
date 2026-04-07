@@ -14,13 +14,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    process.env.FRONTEND_URL || ''
+    'http://localhost:3000',
+    frontendUrl
   ].filter(Boolean),
   credentials: true
 }));
+
 app.use(express.json());
 
 // Health check endpoint
